@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "ccfl hook session-start" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "ccfl hook user-prompt-submit" } ] }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|Bash",
+        "hooks": [ { "type": "command", "command": "ccfl hook pre-tool-use" } ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [ { "type": "command", "command": "ccfl hook post-tool-use" } ]
+      }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "ccfl hook stop" } ] }
+    ],
+    "PreCompact": [
+      { "hooks": [ { "type": "command", "command": "ccfl hook pre-compact" } ] }
+    ],
+    "PostCompact": [
+      { "hooks": [ { "type": "command", "command": "ccfl hook post-compact" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "ccfl hook session-end" } ] }
+    ]
+  }
+}

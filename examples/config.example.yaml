@@ -1,0 +1,19 @@
+# cc-feishu-link 配置示例。复制到 ~/.cc-feishu-link/config.yaml 后填写。
+feishu:
+  app_id: ""                  # 飞书自建应用 App ID
+  app_secret: ""              # 飞书自建应用 App Secret（不会写入飞书文档）
+  root_folder_token: ""       # session 文件夹的父目录 token；留空则建在根目录
+  registry_bitable_token: ""  # V2 用：session 索引多维表格 token
+  base_url: "https://open.feishu.cn"  # 海外租户用 https://open.larksuite.com
+
+sync:
+  interval_minutes: 10        # 周期同步间隔
+  min_dirty_events: 5         # 累积脏事件达到该数量触发同步
+  max_unsynced_minutes: 30    # 距上次同步超过该时长强制同步
+
+policy:
+  block_test_weakening: true              # 直接 block 削弱测试的危险命令
+  require_approval_for_test_changes: true # 改 tests/golden/threshold/eval 需人工确认
+  require_approval_for_ci_changes: true   # 改 CI 配置需人工确认
+  require_approval_for_delete: true       # 删除类操作需确认
+  require_approval_for_git_push: true     # git push 需确认

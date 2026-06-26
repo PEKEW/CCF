@@ -1,0 +1,11 @@
+# build output
+/ccfl
+/cc-feishu-link
+*.test
+
+# local runtime state / mock backend
+.mock-feishu/
+*.tmp
+
+# harness / editor scratch
+.claude/
