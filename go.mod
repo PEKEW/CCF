@@ -1,4 +1,4 @@
-module github.com/peke/cc-feishu-link
+module github.com/PEKEW/CCF
 
 go 1.26.1
 

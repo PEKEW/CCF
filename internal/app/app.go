@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/peke/cc-feishu-link/internal/feishu"
-	"github.com/peke/cc-feishu-link/internal/policy"
-	"github.com/peke/cc-feishu-link/internal/session"
+	"github.com/PEKEW/CCF/internal/feishu"
+	"github.com/PEKEW/CCF/internal/policy"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 // Backend selects the Feishu implementation.

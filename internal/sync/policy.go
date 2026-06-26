@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/session"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 // Decision is the outcome of evaluating sync policy.

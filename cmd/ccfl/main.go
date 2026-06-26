@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/peke/cc-feishu-link/internal/app"
-	"github.com/peke/cc-feishu-link/internal/hooks"
+	"github.com/PEKEW/CCF/internal/app"
+	"github.com/PEKEW/CCF/internal/hooks"
 )
 
 const usage = `ccfl - cc-feishu-link core

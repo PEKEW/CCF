@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/session"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 func baseState() *session.SessionState {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/session"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 func dash(s string) string {

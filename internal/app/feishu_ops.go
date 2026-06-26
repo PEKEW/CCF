@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/peke/cc-feishu-link/internal/session"
-	"github.com/peke/cc-feishu-link/internal/templates"
+	"github.com/PEKEW/CCF/internal/session"
+	"github.com/PEKEW/CCF/internal/templates"
 )
 
 // createFolderAndDocs creates the Feishu folder and the 6 core docs, populating

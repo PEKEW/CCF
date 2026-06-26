@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/hooks"
-	"github.com/peke/cc-feishu-link/internal/policy"
-	"github.com/peke/cc-feishu-link/internal/session"
-	syncpkg "github.com/peke/cc-feishu-link/internal/sync"
-	"github.com/peke/cc-feishu-link/internal/templates"
+	"github.com/PEKEW/CCF/internal/hooks"
+	"github.com/PEKEW/CCF/internal/policy"
+	"github.com/PEKEW/CCF/internal/session"
+	syncpkg "github.com/PEKEW/CCF/internal/sync"
+	"github.com/PEKEW/CCF/internal/templates"
 )
 
 func hashString(s string) string {

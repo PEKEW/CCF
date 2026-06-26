@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/peke/cc-feishu-link/internal/hooks"
+	"github.com/PEKEW/CCF/internal/hooks"
 )
 
 func newTestApp(t *testing.T) *App {

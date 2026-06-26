@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	syncpkg "github.com/peke/cc-feishu-link/internal/sync"
+	syncpkg "github.com/PEKEW/CCF/internal/sync"
 )
 
 // RunStatus prints a summary of a session (latest if id == "").

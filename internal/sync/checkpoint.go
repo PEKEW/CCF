@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/session"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 // RenderCheckpoint builds a markdown checkpoint block from buffered events.

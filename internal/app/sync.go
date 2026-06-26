@@ -3,9 +3,9 @@ package app
 import (
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/session"
-	syncpkg "github.com/peke/cc-feishu-link/internal/sync"
-	"github.com/peke/cc-feishu-link/internal/templates"
+	"github.com/PEKEW/CCF/internal/session"
+	syncpkg "github.com/PEKEW/CCF/internal/sync"
+	"github.com/PEKEW/CCF/internal/templates"
 )
 
 // flush renders a checkpoint from buffered events and writes it plus the index

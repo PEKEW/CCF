@@ -3,7 +3,7 @@ package sync
 import (
 	"time"
 
-	"github.com/peke/cc-feishu-link/internal/session"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 // MarkEvent records that a new buffered event made the session dirty.
