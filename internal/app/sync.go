@@ -8,29 +8,36 @@ import (
 	"github.com/PEKEW/CCF/internal/templates"
 )
 
-// flush renders a checkpoint from buffered events and writes it plus the index
-// and active-context docs, then clears dirty state. reason is logged.
+// flush writes the session's Feishu docs from current state, then clears dirty
+// state. It renders the human-surface docs purely from SessionState and NEVER
+// reads the event buffer — the raw event log stays local.
 func (a *App) flush(st *session.SessionState, reason string) error {
 	now := time.Now()
-	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
-	events, err := buf.Since(st.LastSyncAt)
-	if err != nil {
-		return err
-	}
+	a.notef("sync: %s", reason)
 
-	a.notef("sync: %s (%d events since last sync)", reason, len(events))
-
-	cp := syncpkg.RenderCheckpoint(st, events, now)
-	if err := a.appendDoc(st, string(templates.KeyCheckpoints), cp); err != nil {
+	// Cockpit + Recap reflect current state every sync.
+	if err := a.updateDoc(st, string(templates.KeyCockpit), syncpkg.RenderCockpit(st)); err != nil {
 		return err
 	}
-	if err := a.updateDoc(st, string(templates.KeyIndex), syncpkg.RenderIndex(st)); err != nil {
+	if err := a.updateDoc(st, string(templates.KeyRecap), syncpkg.RenderRecap(st)); err != nil {
 		return err
 	}
-	if err := a.updateDoc(st, string(templates.KeyActiveContext), syncpkg.RenderActiveContext(st, events)); err != nil {
-		return err
+	if st.Dirty.HasContractUpdate {
+		if err := a.updateDoc(st, string(templates.KeyContract), syncpkg.RenderContract(st)); err != nil {
+			return err
+		}
 	}
-
+	if st.Dirty.HasMemoryUpdate {
+		if err := a.updateDoc(st, string(templates.KeyMemory), syncpkg.RenderMemory(st)); err != nil {
+			return err
+		}
+	}
+	if st.Dirty.HasHandoffUpdate {
+		if err := a.updateDoc(st, string(templates.KeyHandoff), syncpkg.RenderHandoffV2(st)); err != nil {
+			return err
+		}
+	}
+	// 03 (validation/decisions) is append-only and written at event time.
 	syncpkg.Clear(st, now)
 	return a.Store.Save(st)
 }

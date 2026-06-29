@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ccfl": {
+      "type": "stdio",
+      "command": "ccfl",
+      "args": ["mcp"]
+    }
+  }
+}

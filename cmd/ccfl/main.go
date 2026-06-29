@@ -17,6 +17,7 @@ Usage:
   ccfl status [--session ID]
   ccfl sync [--session ID] [--force] [--dry-run]
   ccfl hook <event> [--dry-run]
+  ccfl mcp
 
 Hook events:
   session-start user-prompt-submit pre-tool-use post-tool-use
@@ -49,6 +50,8 @@ func run(cmd string, args []string) error {
 		return cmdSync(args)
 	case "hook":
 		return cmdHook(args)
+	case "mcp":
+		return cmdMCP(args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return nil

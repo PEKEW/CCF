@@ -91,11 +91,12 @@ func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	st.DocLayout = session.LayoutV2 // new sessions use the v2 human-surface docs
 
 	if err := a.createFolderAndDocs(st, session.UntitledFolderName(now)); err != nil {
 		return fmt.Errorf("create feishu folder/docs: %w", err)
 	}
-	if err := a.updateDoc(st, string(templates.KeyIndex), syncpkg.RenderIndex(st)); err != nil {
+	if err := a.updateDoc(st, string(templates.KeyCockpit), syncpkg.RenderCockpit(st)); err != nil {
 		return err
 	}
 
@@ -146,11 +147,16 @@ func (a *App) RunUserPromptSubmit(in *hooks.Input, out io.Writer) error {
 		if err := a.renameFolder(st, folderTitle); err != nil {
 			return err
 		}
-		if err := a.updateDoc(st, string(templates.KeyIndex), syncpkg.RenderIndex(st)); err != nil {
+		// Seed the contract goal from the first prompt; Claude refines it later
+		// via feishu_set_contract. Refresh cockpit + contract docs.
+		st.Contract.Goal = st.ProvisionalTitle
+		st.Contract.UpdatedAt = now
+		syncpkg.MarkContract(st, now)
+		syncpkg.MarkCockpit(st, now)
+		if err := a.updateDoc(st, string(templates.KeyCockpit), syncpkg.RenderCockpit(st)); err != nil {
 			return err
 		}
-		if err := a.appendDoc(st, string(templates.KeyTaskPlan),
-			"\n## Goal (draft)\n\n"+st.ProvisionalTitle+"\n"); err != nil {
+		if err := a.updateDoc(st, string(templates.KeyContract), syncpkg.RenderContract(st)); err != nil {
 			return err
 		}
 
@@ -223,8 +229,9 @@ func (a *App) RunPostToolUse(in *hooks.Input, out io.Writer) error {
 		priority = syncpkg.PriorityImportant
 		trigger = "validation_completed"
 		syncpkg.MarkValidation(st, now)
-		_ = a.appendDoc(st, string(templates.KeyValidationDecs),
-			"\n### Validation "+now.Format(time.RFC3339)+"\n\n- Command: "+policy.Redact(f.Command)+"\n")
+		line := "Command: " + policy.Redact(f.Command)
+		st.AppendValidation(session.LogEntry{Time: now, Kind: "validation", Text: line})
+		_ = a.appendDoc(st, string(templates.KeyValDecs), syncpkg.RenderValidationEntry(now, line))
 	}
 
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
@@ -236,17 +243,18 @@ func (a *App) RunPostToolUse(in *hooks.Input, out io.Writer) error {
 	return a.finishHook(st, trigger, out, hooks.Allow())
 }
 
-// RunStop flushes a checkpoint and updates handoff.
+// RunStop updates the handoff doc and flushes.
 func (a *App) RunStop(in *hooks.Input, out io.Writer) error {
 	st, err := a.resolveSession(in.SessionID)
 	if err != nil {
 		return hooks.Allow().Write(out)
 	}
+	now := time.Now()
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "stop", HookEvent: "Stop", Summary: "stop", SyncPriority: syncpkg.PriorityImmediate})
 
-	events, _ := buf.Since(st.LastSyncAt)
-	if err := a.updateDoc(st, string(templates.KeyHandoff), syncpkg.RenderHandoff(st, events)); err != nil {
+	syncpkg.MarkHandoff(st, now)
+	if err := a.updateDoc(st, string(templates.KeyHandoff), syncpkg.RenderHandoffV2(st)); err != nil {
 		return err
 	}
 	if err := a.flush(st, "stop hook"); err != nil {
@@ -261,10 +269,15 @@ func (a *App) RunPreCompact(in *hooks.Input, out io.Writer) error {
 	if err != nil {
 		return hooks.Allow().Write(out)
 	}
+	now := time.Now()
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "compact_pending", HookEvent: "PreCompact",
 		Summary: "trigger=" + in.Trigger, SyncPriority: syncpkg.PriorityNormal})
-	syncpkg.MarkCompact(st, time.Now())
+	syncpkg.MarkCompact(st, now)
+	// Compaction imminent: distill durable facts into Memory and push now.
+	if a.distillMemory(st, now) {
+		_ = a.updateDoc(st, string(templates.KeyMemory), syncpkg.RenderMemory(st))
+	}
 	return a.finishHook(st, "", out, hooks.Allow())
 }
 
@@ -307,13 +320,44 @@ func (a *App) finishHook(st *session.SessionState, trigger string, out io.Writer
 
 // recordDecision appends a decision entry to the validation/decisions doc.
 func (a *App) recordDecision(st *session.SessionState, verdict string, risk policy.Risk, tc policy.ToolCall) {
+	now := time.Now()
 	subject := tc.Command
 	if subject == "" {
 		subject = tc.FilePath
 	}
-	entry := fmt.Sprintf("\n### Decision %s\n\n- Context: %s on %q\n- Verdict: %s\n- Rule: %s\n- Reason: %s\n- Time: %s\n",
-		hashString(verdict+subject), tc.Name, subject, verdict, risk.Rule, risk.Reason, time.Now().Format(time.RFC3339))
-	_ = a.appendDoc(st, string(templates.KeyValidationDecs), entry)
-	syncpkg.MarkDecision(st, time.Now())
+	ctx := fmt.Sprintf("%s on %q", tc.Name, subject)
+	entry := syncpkg.RenderDecisionEntry(now, verdict, ctx, risk.Rule, risk.Reason)
+	st.AppendDecision(session.LogEntry{Time: now, Kind: "decision", Text: verdict + ": " + ctx})
+	_ = a.appendDoc(st, string(templates.KeyValDecs), entry)
+	syncpkg.MarkDecision(st, now)
 	_ = a.Store.Save(st)
+}
+
+// distillMemory copies durable facts (decisions, validations, constraints) from
+// structured state into Memory, deduped by text. Deterministic — no invented
+// prose. Returns true if any new item was added.
+func (a *App) distillMemory(st *session.SessionState, now time.Time) bool {
+	seen := map[string]bool{}
+	for _, m := range st.Memory {
+		seen[m.Text] = true
+	}
+	add := func(kind, text string) bool {
+		if text == "" || seen[text] {
+			return false
+		}
+		seen[text] = true
+		st.Memory = append(st.Memory, session.MemoryItem{Time: now, Kind: kind, Text: text})
+		return true
+	}
+	changed := false
+	for _, c := range st.Contract.Constraints {
+		changed = add("constraint", c) || changed
+	}
+	for _, d := range st.Decisions {
+		changed = add("decision", d.Text) || changed
+	}
+	if changed {
+		syncpkg.MarkMemory(st, now)
+	}
+	return changed
 }

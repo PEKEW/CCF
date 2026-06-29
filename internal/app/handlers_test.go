@@ -2,10 +2,13 @@ package app
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/PEKEW/CCF/internal/hooks"
+	"github.com/PEKEW/CCF/internal/session"
 )
 
 func newTestApp(t *testing.T) *App {
@@ -37,6 +40,9 @@ func TestSessionStartAndFirstPrompt(t *testing.T) {
 	if len(st.Docs) != 6 {
 		t.Fatalf("want 6 docs, got %d", len(st.Docs))
 	}
+	if !st.IsV2() {
+		t.Fatalf("new session should use v2 layout, got %q", st.DocLayout)
+	}
 
 	buf.Reset()
 	if err := a.RunUserPromptSubmit(&hooks.Input{SessionID: "claude-1",
@@ -49,6 +55,9 @@ func TestSessionStartAndFirstPrompt(t *testing.T) {
 	}
 	if st.Title == "" || st.Title == "Untitled" {
 		t.Fatalf("title not set: %q", st.Title)
+	}
+	if st.Contract.Goal != st.Title {
+		t.Fatalf("first prompt should seed contract goal, got %q", st.Contract.Goal)
 	}
 	// immediate event should have flushed -> dirty cleared
 	if st.Dirty.DirtyEventCount != 0 {
@@ -226,18 +235,72 @@ func TestPostToolUseValidationTriggersSync(t *testing.T) {
 	if st.Dirty.DirtyEventCount != 0 {
 		t.Fatalf("sync should clear dirty, got %d", st.Dirty.DirtyEventCount)
 	}
+	if len(st.Validations) != 1 {
+		t.Fatalf("validation should be recorded in state, got %d", len(st.Validations))
+	}
 }
 
-func TestStopGeneratesCheckpoint(t *testing.T) {
+func TestStopWritesHandoff(t *testing.T) {
 	a := newTestApp(t)
 	var buf bytes.Buffer
 	_ = a.RunSessionStart(&hooks.Input{SessionID: "c", CWD: t.TempDir()}, &buf)
+	id, _ := a.Store.FindByClaudeID("c")
+	st, _ := a.Store.Load(id)
+	st.Handoff.Done = []string{"did a thing"}
+	_ = a.Store.Save(st)
+
 	if err := a.RunStop(&hooks.Input{SessionID: "c"}, &buf); err != nil {
 		t.Fatal(err)
 	}
-	id, _ := a.Store.FindByClaudeID("c")
-	st, _ := a.Store.Load(id)
+	st, _ = a.Store.Load(id)
 	if st.LastSyncAt.IsZero() {
 		t.Fatal("stop should flush")
 	}
+	// v2 stop must write the handoff doc and never a checkpoint/event dump.
+	if !mockFileContains(t, "did a thing") {
+		t.Fatal("handoff content not written")
+	}
+	if mockFileContains(t, "Checkpoint") {
+		t.Fatal("v2 stop must not write an event-log checkpoint")
+	}
+}
+
+func TestPreCompactDistillsMemory(t *testing.T) {
+	a := newTestApp(t)
+	var buf bytes.Buffer
+	_ = a.RunSessionStart(&hooks.Input{SessionID: "c", CWD: t.TempDir()}, &buf)
+	id, _ := a.Store.FindByClaudeID("c")
+	st, _ := a.Store.Load(id)
+	st.Contract.Constraints = []string{"do not weaken tests"}
+	st.AppendDecision(session.LogEntry{Kind: "decision", Text: "use JWT"})
+	_ = a.Store.Save(st)
+
+	if err := a.RunPreCompact(&hooks.Input{SessionID: "c", Trigger: "auto"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = a.Store.Load(id)
+	if len(st.Memory) == 0 {
+		t.Fatal("pre-compact should distill memory")
+	}
+	if !mockFileContains(t, "do not weaken tests") {
+		t.Fatal("distilled memory not written to doc")
+	}
+}
+
+// mockFileContains scans the mock backend output for a substring.
+func mockFileContains(t *testing.T, sub string) bool {
+	t.Helper()
+	root := filepath.Join(os.Getenv("CCFL_HOME"), ".mock-feishu")
+	found := false
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		b, _ := os.ReadFile(p)
+		if strings.Contains(string(b), sub) {
+			found = true
+		}
+		return nil
+	})
+	return found
 }

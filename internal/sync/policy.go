@@ -38,8 +38,7 @@ func Evaluate(st *session.SessionState, now time.Time, triggerEvent string) Deci
 	}
 
 	d := st.Dirty
-	if !d.HasDirtyEvents && !d.HasValidationUpdate && !d.HasDecisionUpdate &&
-		!d.HasCompactUpdate && !d.HasHandoffUpdate {
+	if !d.Pending() {
 		return Decision{false, "nothing dirty"}
 	}
 

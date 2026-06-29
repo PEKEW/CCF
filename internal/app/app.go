@@ -130,5 +130,53 @@ func (a *App) resolveSession(claudeID string) (*session.SessionState, error) {
 	return a.Store.Load(id)
 }
 
+// ResolveForMCP resolves the session an MCP tool should act on:
+// explicit idArg (Claude id or local id) → CCFL_SESSION env → latest.
+func (a *App) ResolveForMCP(idArg string) (*session.SessionState, error) {
+	try := func(id string) (*session.SessionState, error) {
+		if id == "" {
+			return nil, nil
+		}
+		if local, _ := a.Store.FindByClaudeID(id); local != "" {
+			return a.Store.Load(local)
+		}
+		if st, err := a.Store.Load(id); err == nil {
+			return st, nil
+		}
+		return nil, nil
+	}
+	if st, err := try(idArg); err != nil {
+		return nil, err
+	} else if st != nil {
+		return st, nil
+	}
+	if st, err := try(os.Getenv("CCFL_SESSION")); err != nil {
+		return nil, err
+	} else if st != nil {
+		return st, nil
+	}
+	id, err := a.Store.Latest()
+	if err != nil {
+		return nil, err
+	}
+	if id == "" {
+		return nil, errNoSession
+	}
+	return a.Store.Load(id)
+}
+
+// PushDoc renders+writes one doc for the current backend (replace).
+func (a *App) PushDoc(st *session.SessionState, key string, content string) error {
+	return a.updateDoc(st, key, content)
+}
+
+// AppendToDoc appends content to one doc for the current backend.
+func (a *App) AppendToDoc(st *session.SessionState, key string, content string) error {
+	return a.appendDoc(st, key, content)
+}
+
+// SaveSession persists session state.
+func (a *App) SaveSession(st *session.SessionState) error { return a.Store.Save(st) }
+
 // ctx is a short helper for a background context.
 func ctx() context.Context { return context.Background() }

@@ -3,138 +3,83 @@ package templates
 // DocKey identifies one of the core session documents.
 type DocKey string
 
+// v2 document set: a human surface (cockpit / contract / handoff), not an
+// event log. New sessions use these.
 const (
-	KeyIndex          DocKey = "00_SESSION_INDEX"
-	KeyTaskPlan       DocKey = "01_TASK_AND_PLAN"
-	KeyActiveContext  DocKey = "02_ACTIVE_CONTEXT"
-	KeyCheckpoints    DocKey = "03_CHECKPOINTS"
-	KeyValidationDecs DocKey = "04_VALIDATION_AND_DECISIONS"
-	KeyHandoff        DocKey = "05_HANDOFF"
+	KeyCockpit  DocKey = "00_COCKPIT"
+	KeyContract DocKey = "01_TASK_CONTRACT"
+	KeyRecap    DocKey = "02_RECAP"
+	KeyValDecs  DocKey = "03_VALIDATION_AND_DECISIONS"
+	KeyHandoff  DocKey = "04_HANDOFF"
+	KeyMemory   DocKey = "05_MEMORY"
 )
 
-// CoreDocs is the ordered list of MVP documents.
+// CoreDocs is the ordered v2 document set created for new sessions.
+// Changing this list (and Initial) is the only place the doc set is defined.
 var CoreDocs = []DocKey{
-	KeyIndex, KeyTaskPlan, KeyActiveContext, KeyCheckpoints, KeyValidationDecs, KeyHandoff,
+	KeyCockpit, KeyContract, KeyRecap, KeyValDecs, KeyHandoff, KeyMemory,
 }
 
-// Initial returns the starter content for a document key.
+// Initial returns the starter content for a v2 document key. Content is a thin
+// scaffold; Claude fills the substance via the MCP tools and ccfl re-renders.
+// Affects NEW sessions only — existing sessions keep their on-disk docs.
 func Initial(k DocKey) string {
 	switch k {
-	case KeyIndex:
-		return indexTmpl
-	case KeyTaskPlan:
-		return taskPlanTmpl
-	case KeyActiveContext:
-		return activeContextTmpl
-	case KeyCheckpoints:
-		return checkpointsTmpl
-	case KeyValidationDecs:
-		return validationTmpl
+	case KeyCockpit:
+		return cockpitTmpl
+	case KeyContract:
+		return contractTmpl
+	case KeyRecap:
+		return recapTmpl
+	case KeyValDecs:
+		return valDecsTmpl
 	case KeyHandoff:
 		return handoffTmpl
+	case KeyMemory:
+		return memoryTmpl
 	}
 	return ""
 }
 
-const indexTmpl = `# Session Index
+const cockpitTmpl = `# Cockpit
 
-## Basic Info
-
-- Session ID:
-- Title:
-- Status:
-- Phase:
-- Created:
-- Last Sync:
-- Feishu Folder:
-- Local CWD:
-- Git Branch:
-- Git Commit:
-
-## Current Summary
-
-## Current Blocker
-
-## Next Step
-
-## Key Links
-
-- Task and Plan:
-- Active Context:
-- Checkpoints:
-- Validation and Decisions:
-- Handoff:
+_(driving panel — refreshed automatically on each sync)_
 `
 
-const taskPlanTmpl = `# Task and Plan
+const contractTmpl = `# Task Contract
 
 ## Goal
 
-## Non-goals
+## Why
 
-## Assumptions
+## In Scope
+
+## Out of Scope
+
+## Acceptance Criteria
 
 ## Constraints
 
-## Plan
+These must NOT be broken without explicit human approval:
 
-## Expected Output of Each Step
+- Tests, golden outputs, thresholds, CI, lockfiles, deployment settings.
 
-## Validation Method
-
-## Stop Conditions
-
-Stop and ask the user when:
-
-- The same failure repeats.
-- The task scope expands.
-- A risky operation is required.
-- Tests, thresholds, golden outputs, CI, lockfiles, or deployment settings need changes.
-- The next step is not clearly justified.
-
-## Human Approval Required
-
-## Plan Revisions
+## Known Risks
 `
 
-const activeContextTmpl = `# Active Context
+const recapTmpl = `# Recap
 
-## Current Goal
-
-## Current Phase
-
-## Current Working Directory
-
-## Git State
-
-## Active Files
-
-## Current Assumptions
-
-## Recent Changes
-
-## Validation Status
-
-## Open Decisions
-
-## Current Blocker
-
-## Next Step
-
-## What Must Not Be Forgotten
+_(narrative progress summary, authored by Claude — not an event log)_
 `
 
-const checkpointsTmpl = `# Checkpoints
-`
+const valDecsTmpl = `# Validation & Decisions
 
-const validationTmpl = `# Validation and Decisions
-
-## Validation Records
+## Validation
 
 ## Decisions
 `
 
-const handoffTmpl = `# Handoff Summary
+const handoffTmpl = `# Handoff
 
 ## What This Session Tried To Do
 
@@ -142,15 +87,14 @@ const handoffTmpl = `# Handoff Summary
 
 ## What Remains
 
-## Current State
-
 ## Known Risks
 
 ## How To Resume
 
 ## Files To Read First
+`
 
-## Commands To Run
+const memoryTmpl = `# Memory
 
-## Feishu Docs To Check
+_(durable facts that must survive compaction: constraints, decisions, gotchas, resources)_
 `
