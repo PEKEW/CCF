@@ -16,8 +16,9 @@ import (
 // Notes / MVP limitations:
 //   - Content is written into docx documents as plain text paragraph blocks
 //     (markdown is not rendered to rich blocks).
-//   - UpdateDoc is implemented as append (docx full-replace requires deleting
-//     every child block; deferred to V2).
+//   - UpdateDoc does a full replace: it clears the document's root children
+//     (paginated count + batch_delete) and rewrites content. AppendDoc still
+//     appends (used for checkpoints/validation logs).
 //   - RenameFolder uses the drive PATCH endpoint; if the tenant/API does not
 //     support folder rename it logs and returns nil rather than failing a hook.
 type RealClient struct {
@@ -136,8 +137,54 @@ func (c *RealClient) CreateDoc(ctx context.Context, folderToken, title, content 
 }
 
 func (c *RealClient) UpdateDoc(ctx context.Context, docToken, content string) error {
-	// MVP: append rather than replace (see type doc).
+	// Full replace: clear existing root children, then write fresh content.
+	// Falls back to append if clearing fails, so a doc is never left empty.
+	if err := c.clearDoc(ctx, docToken); err != nil {
+		return c.appendBlocks(ctx, docToken, content)
+	}
 	return c.appendBlocks(ctx, docToken, content)
+}
+
+// rootChildrenCount returns the number of direct children of the document root
+// block, paginating through all pages.
+func (c *RealClient) rootChildrenCount(ctx context.Context, docID string) (int, error) {
+	total := 0
+	pageToken := ""
+	for {
+		path := fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children?page_size=500", docID, docID)
+		if pageToken != "" {
+			path += "&page_token=" + pageToken
+		}
+		var out struct {
+			Items     []json.RawMessage `json:"items"`
+			PageToken string            `json:"page_token"`
+			HasMore   bool              `json:"has_more"`
+		}
+		if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
+			return 0, err
+		}
+		total += len(out.Items)
+		if !out.HasMore || out.PageToken == "" {
+			break
+		}
+		pageToken = out.PageToken
+	}
+	return total, nil
+}
+
+// clearDoc removes every direct child block of the document root.
+func (c *RealClient) clearDoc(ctx context.Context, docID string) error {
+	n, err := c.rootChildrenCount(ctx, docID)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	// batch_delete removes children in [start_index, end_index).
+	in := map[string]any{"start_index": 0, "end_index": n}
+	path := fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children/batch_delete", docID, docID)
+	return c.do(ctx, http.MethodDelete, path, in, nil)
 }
 
 func (c *RealClient) AppendDoc(ctx context.Context, docToken, content string) error {
