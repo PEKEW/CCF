@@ -99,23 +99,33 @@ func (a *App) notef(format string, args ...any) {
 	fmt.Fprintf(a.Log, "[ccfl] "+format+"\n", args...)
 }
 
-// resolveSession finds the session for a hook input: by Claude id, else latest.
+// errNoSession is returned when no managed session matches the request. Hook
+// handlers treat it as "stay out of the way" (allow), not a hard failure.
+var errNoSession = fmt.Errorf("no session found; run session-start first")
+
+// resolveSession finds the session for a hook input.
+//
+// When a Claude id is given, it must match exactly — we do NOT fall back to the
+// latest session, otherwise a hook whose session-start failed (e.g. folder
+// creation forbidden) would bind to and corrupt an unrelated session. The
+// latest-session fallback applies only to CLI calls that pass no id (status/sync).
 func (a *App) resolveSession(claudeID string) (*session.SessionState, error) {
 	if claudeID != "" {
 		id, err := a.Store.FindByClaudeID(claudeID)
 		if err != nil {
 			return nil, err
 		}
-		if id != "" {
-			return a.Store.Load(id)
+		if id == "" {
+			return nil, errNoSession
 		}
+		return a.Store.Load(id)
 	}
 	id, err := a.Store.Latest()
 	if err != nil {
 		return nil, err
 	}
 	if id == "" {
-		return nil, fmt.Errorf("no session found; run session-start first")
+		return nil, errNoSession
 	}
 	return a.Store.Load(id)
 }

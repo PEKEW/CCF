@@ -33,6 +33,12 @@ type DirtyState struct {
 	LastDirtyAt         time.Time `json:"last_dirty_at,omitempty"`
 }
 
+// Pending reports whether any unsynced change is waiting to be flushed.
+func (d DirtyState) Pending() bool {
+	return d.HasDirtyEvents || d.HasValidationUpdate || d.HasDecisionUpdate ||
+		d.HasCompactUpdate || d.HasHandoffUpdate
+}
+
 // SyncPolicy controls when buffered events get flushed to Feishu.
 type SyncPolicy struct {
 	Mode               string   `json:"mode"`

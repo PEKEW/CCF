@@ -56,6 +56,109 @@ func TestSessionStartAndFirstPrompt(t *testing.T) {
 	}
 }
 
+func TestInjectedFirstPromptSkipped(t *testing.T) {
+	a := newTestApp(t)
+	var buf bytes.Buffer
+	_ = a.RunSessionStart(&hooks.Input{SessionID: "claude-1", CWD: t.TempDir()}, &buf)
+	id, _ := a.Store.FindByClaudeID("claude-1")
+
+	// harness injection arrives first — must NOT become the title
+	buf.Reset()
+	if err := a.RunUserPromptSubmit(&hooks.Input{SessionID: "claude-1",
+		Prompt: "<task-notification>build done</task-notification>"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := a.Store.Load(id)
+	if st.FirstPromptSeen {
+		t.Fatal("injected prompt should not count as first prompt")
+	}
+	if st.Title != "Untitled" {
+		t.Fatalf("title should stay Untitled, got %q", st.Title)
+	}
+
+	// real prompt next — this one titles the session
+	buf.Reset()
+	if err := a.RunUserPromptSubmit(&hooks.Input{SessionID: "claude-1",
+		Prompt: "Add user authentication to login"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = a.Store.Load(id)
+	if !st.FirstPromptSeen {
+		t.Fatal("real prompt should be recorded as first")
+	}
+	if !strings.Contains(strings.ToLower(st.Title), "authentication") {
+		t.Fatalf("title should come from real prompt, got %q", st.Title)
+	}
+}
+
+func TestHookNoOpWhenSessionMissing(t *testing.T) {
+	a := newTestApp(t)
+	var buf bytes.Buffer
+	// no session-start for this id; must not error or bind to a stale session
+	if err := a.RunUserPromptSubmit(&hooks.Input{SessionID: "ghost", Prompt: "hello"}, &buf); err != nil {
+		t.Fatalf("expected no-op, got error: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"continue":true`) && buf.Len() == 0 {
+		// Allow() output; just ensure no session was created
+	}
+	if id, _ := a.Store.FindByClaudeID("ghost"); id != "" {
+		t.Fatal("no-op hook must not create a session")
+	}
+}
+
+func TestStaleSessionNotHijacked(t *testing.T) {
+	a := newTestApp(t)
+	var buf bytes.Buffer
+	// real session for claude-A
+	_ = a.RunSessionStart(&hooks.Input{SessionID: "claude-A", CWD: t.TempDir()}, &buf)
+	idA, _ := a.Store.FindByClaudeID("claude-A")
+
+	// claude-B has no session (its session-start "failed"); its prompt must NOT
+	// mutate claude-A's session via a latest() fallback.
+	buf.Reset()
+	_ = a.RunUserPromptSubmit(&hooks.Input{SessionID: "claude-B", Prompt: "different task"}, &buf)
+	stA, _ := a.Store.Load(idA)
+	if stA.FirstPromptSeen {
+		t.Fatal("claude-A session was hijacked by claude-B prompt")
+	}
+}
+
+func TestResumeReusesSessionAndReactivates(t *testing.T) {
+	a := newTestApp(t)
+	var buf bytes.Buffer
+	_ = a.RunSessionStart(&hooks.Input{SessionID: "claude-1", CWD: t.TempDir()}, &buf)
+	id, _ := a.Store.FindByClaudeID("claude-1")
+	_ = a.RunUserPromptSubmit(&hooks.Input{SessionID: "claude-1", Prompt: "do a thing"}, &buf)
+
+	// end the session
+	_ = a.RunSessionEnd(&hooks.Input{SessionID: "claude-1", Reason: "exit"}, &buf)
+	st, _ := a.Store.Load(id)
+	if st.Status != "ended" {
+		t.Fatalf("want ended, got %q", st.Status)
+	}
+
+	// resume: same id, no new session/folder, status back to active
+	folderBefore := st.FeishuFolderURL
+	buf.Reset()
+	if err := a.RunSessionStart(&hooks.Input{SessionID: "claude-1", CWD: t.TempDir()}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := a.Store.FindByClaudeID("claude-1")
+	if got != id {
+		t.Fatalf("resume created a new session: %s != %s", got, id)
+	}
+	st, _ = a.Store.Load(id)
+	if st.Status != "active" {
+		t.Fatalf("resume should reactivate, got %q", st.Status)
+	}
+	if st.FeishuFolderURL != folderBefore {
+		t.Fatalf("resume changed folder: %q != %q", st.FeishuFolderURL, folderBefore)
+	}
+	if !strings.Contains(buf.String(), "resumed") {
+		t.Fatalf("expected resume context, got %s", buf.String())
+	}
+}
+
 func TestPreToolUseBlocksDanger(t *testing.T) {
 	a := newTestApp(t)
 	var buf bytes.Buffer

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/PEKEW/CCF/internal/hooks"
@@ -20,12 +21,66 @@ func hashString(s string) string {
 	return hex.EncodeToString(h[:8])
 }
 
+// injectedPrefixes are harness/system-injected wrappers that arrive on the
+// UserPromptSubmit hook but are NOT the user's own text. Title generation must
+// ignore them so the session is named from a genuine first prompt.
+var injectedPrefixes = []string{
+	"<task-notification",
+	"<system-reminder",
+	"<local-command",
+	"<command-name",
+	"<command-message",
+	"<command-args",
+	"<command-stdout",
+	"<user-prompt-submit-hook",
+}
+
+// isInjectedPrompt reports whether a prompt is empty or a harness injection
+// rather than real user input.
+func isInjectedPrompt(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return true
+	}
+	low := strings.ToLower(t)
+	for _, p := range injectedPrefixes {
+		if strings.HasPrefix(low, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // RunSessionStart creates (or reuses) a session and its Feishu folder/docs.
 func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 	now := time.Now()
 	if existing, _ := a.Store.FindByClaudeID(in.SessionID); existing != "" {
-		a.notef("session-start: reusing %s for claude id %s", existing, in.SessionID)
-		return hooks.Allow().Write(out)
+		// Resume: reuse the same session + Feishu docs. Reactivate if it was
+		// ended, record the resume, and flush anything left dirty last time.
+		st, err := a.Store.Load(existing)
+		if err != nil {
+			a.notef("session-start: reusing %s (load failed: %v)", existing, err)
+			return hooks.Allow().Write(out)
+		}
+		st.Status = session.StatusActive
+		buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
+		_ = buf.Append(syncpkg.Event{
+			Kind: "session_resume", HookEvent: "SessionStart",
+			Summary: "resumed: " + st.SessionID, SyncPriority: syncpkg.PriorityImportant,
+		})
+		if err := a.Store.Save(st); err != nil {
+			return err
+		}
+		// Flush only if last session left something unsynced; avoids writing an
+		// empty checkpoint on every resume.
+		if st.Dirty.Pending() {
+			if err := a.flush(st, "session resume"); err != nil {
+				a.notef("session-start: resume flush failed: %v", err)
+			}
+		}
+		a.notef("session-start: resumed %s folder=%s", st.SessionID, st.FeishuFolderURL)
+		return hooks.Context("SessionStart",
+			"Feishu-managed session resumed: "+st.SessionID).Write(out)
 	}
 
 	cwd := in.CWD
@@ -61,12 +116,24 @@ func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 func (a *App) RunUserPromptSubmit(in *hooks.Input, out io.Writer) error {
 	st, err := a.resolveSession(in.SessionID)
 	if err != nil {
-		return err
+		// No managed session for this id (e.g. session-start failed). Stay out
+		// of the way rather than binding to an unrelated session.
+		return hooks.Allow().Write(out)
 	}
 	now := time.Now()
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 
 	if !st.FirstPromptSeen {
+		// Harness/system injections (task-notification, system-reminder, slash
+		// command echoes) are not the user's real first prompt. Buffer and wait
+		// so the session title is generated from genuine user text.
+		if isInjectedPrompt(in.Prompt) {
+			_ = buf.Append(syncpkg.Event{
+				Kind: "system_prompt", HookEvent: "UserPromptSubmit",
+				Summary: "injected prompt skipped for title", SyncPriority: syncpkg.PriorityNormal,
+			})
+			return a.finishHook(st, "", out, hooks.Allow())
+		}
 		st.FirstPromptSeen = true
 		st.ProvisionalTitle = session.ProvisionalTitle(in.Prompt)
 		st.Title = st.ProvisionalTitle
@@ -173,7 +240,7 @@ func (a *App) RunPostToolUse(in *hooks.Input, out io.Writer) error {
 func (a *App) RunStop(in *hooks.Input, out io.Writer) error {
 	st, err := a.resolveSession(in.SessionID)
 	if err != nil {
-		return err
+		return hooks.Allow().Write(out)
 	}
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "stop", HookEvent: "Stop", Summary: "stop", SyncPriority: syncpkg.PriorityImmediate})
