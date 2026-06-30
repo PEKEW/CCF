@@ -51,6 +51,13 @@ func isInjectedPrompt(s string) bool {
 	return false
 }
 
+// noteTranscript records the transcript path so flush() can auto-distill docs.
+func (a *App) noteTranscript(st *session.SessionState, in *hooks.Input) {
+	if in.TranscriptPath != "" {
+		st.TranscriptPath = in.TranscriptPath
+	}
+}
+
 // RunSessionStart creates (or reuses) a session and its Feishu folder/docs.
 func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 	now := time.Now()
@@ -119,6 +126,7 @@ func (a *App) RunUserPromptSubmit(in *hooks.Input, out io.Writer) error {
 		// of the way rather than binding to an unrelated session.
 		return hooks.Allow().Write(out)
 	}
+	a.noteTranscript(st, in)
 	now := time.Now()
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 
@@ -215,6 +223,7 @@ func (a *App) RunPostToolUse(in *hooks.Input, out io.Writer) error {
 		// No session yet: nothing to record, allow.
 		return hooks.Allow().Write(out)
 	}
+	a.noteTranscript(st, in)
 	now := time.Now()
 	f := in.ToolFields()
 
@@ -254,6 +263,7 @@ func (a *App) RunStop(in *hooks.Input, out io.Writer) error {
 	if err != nil {
 		return hooks.Allow().Write(out)
 	}
+	a.noteTranscript(st, in)
 	now := time.Now()
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "stop", HookEvent: "Stop", Summary: "stop", SyncPriority: syncpkg.PriorityImmediate})
@@ -274,6 +284,7 @@ func (a *App) RunPreCompact(in *hooks.Input, out io.Writer) error {
 	if err != nil {
 		return hooks.Allow().Write(out)
 	}
+	a.noteTranscript(st, in)
 	now := time.Now()
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "compact_pending", HookEvent: "PreCompact",
@@ -305,6 +316,7 @@ func (a *App) RunSessionEnd(in *hooks.Input, out io.Writer) error {
 	if err != nil {
 		return hooks.Allow().Write(out)
 	}
+	a.noteTranscript(st, in)
 	st.Status = session.StatusEnded
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "session_end", HookEvent: "SessionEnd",

@@ -146,8 +146,9 @@ type SessionState struct {
 
 	Docs map[string]FeishuDocRef `json:"docs"`
 
-	CWD       string `json:"cwd"`
-	GitRemote string `json:"git_remote,omitempty"`
+	CWD            string `json:"cwd"`
+	TranscriptPath string `json:"transcript_path,omitempty"`
+	GitRemote      string `json:"git_remote,omitempty"`
 	GitBranch string `json:"git_branch,omitempty"`
 	GitCommit string `json:"git_commit,omitempty"`
 	GitDirty  bool   `json:"git_dirty"`
