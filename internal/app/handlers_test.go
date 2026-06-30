@@ -37,11 +37,12 @@ func TestSessionStartAndFirstPrompt(t *testing.T) {
 		t.Fatal("session not created")
 	}
 	st, _ := a.Store.Load(id)
-	if len(st.Docs) != 6 {
-		t.Fatalf("want 6 docs, got %d", len(st.Docs))
-	}
 	if !st.IsV2() {
 		t.Fatalf("new session should use v2 layout, got %q", st.DocLayout)
+	}
+	// Folder + docs are created lazily on the first prompt, not at session-start.
+	if len(st.Docs) != 0 {
+		t.Fatalf("want 0 docs before first prompt, got %d", len(st.Docs))
 	}
 
 	buf.Reset()
@@ -50,6 +51,12 @@ func TestSessionStartAndFirstPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, _ = a.Store.Load(id)
+	if len(st.Docs) != 6 {
+		t.Fatalf("want 6 docs after first prompt, got %d", len(st.Docs))
+	}
+	if st.FeishuFolderToken == "" {
+		t.Fatal("folder should be created on first prompt")
+	}
 	if !st.FirstPromptSeen {
 		t.Fatal("first prompt not recorded")
 	}
@@ -244,6 +251,7 @@ func TestStopWritesHandoff(t *testing.T) {
 	a := newTestApp(t)
 	var buf bytes.Buffer
 	_ = a.RunSessionStart(&hooks.Input{SessionID: "c", CWD: t.TempDir()}, &buf)
+	_ = a.RunUserPromptSubmit(&hooks.Input{SessionID: "c", Prompt: "do the thing"}, &buf)
 	id, _ := a.Store.FindByClaudeID("c")
 	st, _ := a.Store.Load(id)
 	st.Handoff.Done = []string{"did a thing"}
@@ -269,6 +277,7 @@ func TestPreCompactDistillsMemory(t *testing.T) {
 	a := newTestApp(t)
 	var buf bytes.Buffer
 	_ = a.RunSessionStart(&hooks.Input{SessionID: "c", CWD: t.TempDir()}, &buf)
+	_ = a.RunUserPromptSubmit(&hooks.Input{SessionID: "c", Prompt: "do the thing"}, &buf)
 	id, _ := a.Store.FindByClaudeID("c")
 	st, _ := a.Store.Load(id)
 	st.Contract.Constraints = []string{"do not weaken tests"}

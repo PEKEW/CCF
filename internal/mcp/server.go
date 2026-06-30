@@ -153,6 +153,9 @@ func (s *Server) withSession(sessionID string, fn func(st *session.SessionState,
 	if !st.IsV2() {
 		return "", fmt.Errorf("session %s uses the legacy doc layout; MCP authoring is only supported for v2 sessions", st.SessionID)
 	}
+	if len(st.Docs) == 0 {
+		return "", fmt.Errorf("session %s has no Feishu docs yet; send a first prompt to create the folder", st.SessionID)
+	}
 	now := time.Now()
 	msg, err := fn(st, now)
 	if err != nil {

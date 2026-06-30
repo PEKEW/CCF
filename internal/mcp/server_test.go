@@ -20,8 +20,11 @@ func newMockServer(t *testing.T) (*Server, *app.App) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Create a v2 session for tools to act on.
+	// Create a v2 session + first prompt so the folder/docs exist for tools.
 	if err := a.RunSessionStart(&hooks.Input{SessionID: "claude-1", CWD: t.TempDir()}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RunUserPromptSubmit(&hooks.Input{SessionID: "claude-1", Prompt: "build the thing"}, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	return NewServer(a), a

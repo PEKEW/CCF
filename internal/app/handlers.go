@@ -93,12 +93,10 @@ func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 	}
 	st.DocLayout = session.LayoutV2 // new sessions use the v2 human-surface docs
 
-	if err := a.createFolderAndDocs(st, session.UntitledFolderName(now)); err != nil {
-		return fmt.Errorf("create feishu folder/docs: %w", err)
-	}
-	if err := a.updateDoc(st, string(templates.KeyCockpit), syncpkg.RenderCockpit(st)); err != nil {
-		return err
-	}
+	// The Feishu folder is created lazily on the first real prompt, named with
+	// the generated title. Feishu has no folder-rename API, so creating an
+	// "Untitled" folder up front would be stuck Untitled forever; deferring also
+	// avoids junk folders for sessions that never get a prompt.
 
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{
@@ -108,7 +106,7 @@ func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 	if err := a.Store.Save(st); err != nil {
 		return err
 	}
-	a.notef("session-start: created %s folder=%s", st.SessionID, st.FeishuFolderURL)
+	a.notef("session-start: created %s (folder deferred to first prompt)", st.SessionID)
 	return hooks.Context("SessionStart",
 		"Feishu-managed session active: "+st.SessionID).Write(out)
 }
@@ -144,15 +142,22 @@ func (a *App) RunUserPromptSubmit(in *hooks.Input, out io.Writer) error {
 
 		slug := session.Slug(in.Prompt)
 		folderTitle := session.FolderName(now, slug)
-		if err := a.renameFolder(st, folderTitle); err != nil {
-			return err
-		}
 		// Seed the contract goal from the first prompt; Claude refines it later
-		// via feishu_set_contract. Refresh cockpit + contract docs.
+		// via feishu_set_contract.
 		st.Contract.Goal = st.ProvisionalTitle
 		st.Contract.UpdatedAt = now
 		syncpkg.MarkContract(st, now)
 		syncpkg.MarkCockpit(st, now)
+
+		if st.FeishuFolderToken == "" {
+			// Lazily create the folder (named with the title) and its docs now.
+			if err := a.createFolderAndDocs(st, folderTitle); err != nil {
+				return fmt.Errorf("create feishu folder/docs: %w", err)
+			}
+		} else {
+			// Folder already exists (e.g. resumed): best-effort rename.
+			_ = a.renameFolder(st, folderTitle)
+		}
 		if err := a.updateDoc(st, string(templates.KeyCockpit), syncpkg.RenderCockpit(st)); err != nil {
 			return err
 		}
