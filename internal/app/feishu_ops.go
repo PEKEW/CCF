@@ -63,6 +63,16 @@ func (a *App) updateDoc(st *session.SessionState, key, content string) error {
 	return a.Client.UpdateDoc(ctx(), d.Token, content)
 }
 
+// readDocText returns the plain-text content of a doc. Returns "" (no error) for
+// dry-run or when the doc/backend is absent — read-back is best-effort.
+func (a *App) readDocText(st *session.SessionState, key string) (string, error) {
+	d, ok := st.Docs[key]
+	if !ok || a.Backend == BackendDry || a.Client == nil {
+		return "", nil
+	}
+	return a.Client.GetDocText(ctx(), d.Token)
+}
+
 func (a *App) appendDoc(st *session.SessionState, key, content string) error {
 	d, ok := st.Docs[key]
 	if !ok {

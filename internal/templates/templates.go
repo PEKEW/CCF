@@ -12,13 +12,24 @@ const (
 	KeyValDecs  DocKey = "03_VALIDATION_AND_DECISIONS"
 	KeyHandoff  DocKey = "04_HANDOFF"
 	KeyMemory   DocKey = "05_MEMORY"
+	KeyMemo     DocKey = "06_MEMO"
 )
 
 // CoreDocs is the ordered v2 document set created for new sessions.
 // Changing this list (and Initial) is the only place the doc set is defined.
 var CoreDocs = []DocKey{
-	KeyCockpit, KeyContract, KeyRecap, KeyValDecs, KeyHandoff, KeyMemory,
+	KeyCockpit, KeyContract, KeyRecap, KeyValDecs, KeyHandoff, KeyMemory, KeyMemo,
 }
+
+// Memo section markers. The HUMAN section is owned by the user (read back into
+// Claude on resume); the CLAUDE section is written by ccfl/Claude. ccfl must
+// preserve whatever sits between the HUMAN markers when it rewrites the memo.
+const (
+	MemoHumanStart  = "<!-- HUMAN:START -->"
+	MemoHumanEnd    = "<!-- HUMAN:END -->"
+	MemoClaudeStart = "<!-- CLAUDE:START -->"
+	MemoClaudeEnd   = "<!-- CLAUDE:END -->"
+)
 
 // Initial returns the starter content for a v2 document key. Content is a thin
 // scaffold; Claude fills the substance via the MCP tools and ccfl re-renders.
@@ -37,6 +48,8 @@ func Initial(k DocKey) string {
 		return handoffTmpl
 	case KeyMemory:
 		return memoryTmpl
+	case KeyMemo:
+		return MemoTmpl
 	}
 	return ""
 }
@@ -97,4 +110,22 @@ const handoffTmpl = `# Handoff
 const memoryTmpl = `# Memory
 
 _(durable facts that must survive compaction: constraints, decisions, gotchas, resources)_
+`
+
+// MemoTmpl is the initial 06_MEMO doc: a shared notebook between the human and
+// Claude. The human edits the HUMAN section in Feishu; Claude reads it on the
+// next resume. ccfl preserves the HUMAN section whenever it rewrites the memo.
+const MemoTmpl = `# 备忘录 Memo
+
+` + MemoHumanStart + `
+## 人工备注 (Human notes — Claude reads this on resume)
+
+(在这里写给 Claude 的提示、约束、上下文。下次会话 Claude 会自动读到。)
+` + MemoHumanEnd + `
+
+` + MemoClaudeStart + `
+## Claude 备注 (Claude's notes to you)
+
+(none yet)
+` + MemoClaudeEnd + `
 `

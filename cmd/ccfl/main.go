@@ -113,6 +113,14 @@ func cmdHook(args []string) error {
 		return err
 	}
 
+	// Recursion guard: the summary engine spawns a headless `claude -p`, which
+	// fires these same hooks. When CCFL_INSIDE_SUMMARY is set we are inside that
+	// child session — emit an empty allow and do nothing, so we never recurse
+	// into another summary call (or touch the parent's Feishu docs).
+	if os.Getenv("CCFL_INSIDE_SUMMARY") != "" {
+		return hooks.Allow().Write(os.Stdout)
+	}
+
 	in, err := hooks.ParseInput(os.Stdin)
 	if err != nil {
 		return fmt.Errorf("parse hook input: %w", err)

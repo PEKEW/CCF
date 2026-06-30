@@ -191,6 +191,19 @@ func (c *RealClient) AppendDoc(ctx context.Context, docToken, content string) er
 	return c.appendBlocks(ctx, docToken, content)
 }
 
+// GetDocText returns the document's plain-text content via the docx raw_content
+// endpoint.
+func (c *RealClient) GetDocText(ctx context.Context, docToken string) (string, error) {
+	var out struct {
+		Content string `json:"content"`
+	}
+	path := fmt.Sprintf("/open-apis/docx/v1/documents/%s/raw_content?lang=0", docToken)
+	if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return "", err
+	}
+	return out.Content, nil
+}
+
 // textBlock is a docx text paragraph block (block_type 2).
 func textBlock(line string) map[string]any {
 	return map[string]any{

@@ -74,13 +74,13 @@ func TestRenderMemoryGroupedByKind(t *testing.T) {
 		{Kind: "decision", Text: "use JWT"},
 	}
 	out := RenderMemory(st)
-	for _, want := range []string{"## Constraints", "keep API stable", "## Gotchas", "watch the cache TTL", "## Decisions", "use JWT"} {
+	for _, want := range []string{"Constraints", "keep API stable", "Gotchas", "watch the cache TTL", "Decisions", "use JWT"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("memory missing %q:\n%s", want, out)
 		}
 	}
-	// Constraints section must come before Decisions (fixed order).
-	if strings.Index(out, "## Constraints") > strings.Index(out, "## Decisions") {
+	// Gotchas section must come before Constraints (fixed order).
+	if strings.Index(out, "Gotchas") > strings.Index(out, "Constraints") {
 		t.Fatalf("memory kind order wrong:\n%s", out)
 	}
 }

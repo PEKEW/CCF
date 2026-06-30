@@ -193,6 +193,24 @@ func (m *MockClient) AppendDoc(_ context.Context, docToken, content string) erro
 	return err
 }
 
+func (m *MockClient) GetDocText(_ context.Context, docToken string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	man, err := m.load()
+	if err != nil {
+		return "", err
+	}
+	rel, ok := man.Docs[docToken]
+	if !ok {
+		return "", fmt.Errorf("mock: unknown doc %s", docToken)
+	}
+	b, err := os.ReadFile(filepath.Join(m.Root, rel))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func (m *MockClient) UploadArtifact(_ context.Context, folderToken, path string) (*ArtifactRef, error) {
 	return &ArtifactRef{Token: "art_mock", URL: "mock://artifact/" + slugify(filepath.Base(path))}, nil
 }

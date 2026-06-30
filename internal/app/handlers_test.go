@@ -51,8 +51,8 @@ func TestSessionStartAndFirstPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, _ = a.Store.Load(id)
-	if len(st.Docs) != 6 {
-		t.Fatalf("want 6 docs after first prompt, got %d", len(st.Docs))
+	if len(st.Docs) != 7 {
+		t.Fatalf("want 7 docs after first prompt, got %d", len(st.Docs))
 	}
 	if st.FeishuFolderToken == "" {
 		t.Fatal("folder should be created on first prompt")

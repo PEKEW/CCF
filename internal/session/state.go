@@ -153,9 +153,10 @@ type SessionState struct {
 	GitCommit string `json:"git_commit,omitempty"`
 	GitDirty  bool   `json:"git_dirty"`
 
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	LastSyncAt time.Time `json:"last_sync_at,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	LastSyncAt    time.Time `json:"last_sync_at,omitempty"`
+	LastSummaryAt time.Time `json:"last_summary_at,omitempty"` // last headless claude -p summary
 
 	Dirty      DirtyState `json:"dirty"`
 	SyncPolicy SyncPolicy `json:"sync_policy"`
@@ -170,6 +171,10 @@ type SessionState struct {
 	RecapNarrative string       `json:"recap_narrative,omitempty"`
 	Memory         []MemoryItem `json:"memory,omitempty"`
 	Handoff        Handoff      `json:"handoff,omitempty"`
+
+	// MemoNotes is Claude's section of 06_MEMO (the human section lives in Feishu
+	// and is read back on resume, never stored here).
+	MemoNotes []string `json:"memo_notes,omitempty"`
 
 	// Bounded tails mirroring the append-only Validation & Decisions doc.
 	Decisions   []LogEntry `json:"decisions,omitempty"`

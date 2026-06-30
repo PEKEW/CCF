@@ -86,6 +86,7 @@ func RenderCockpit(st *session.SessionState) string {
 	link("Validation & Decisions", templates.KeyValDecs)
 	link("Handoff", templates.KeyHandoff)
 	link("Memory", templates.KeyMemory)
+	link("Memo", templates.KeyMemo)
 
 	b.WriteString("\n---\n\n## Metadata\n\n")
 	fmt.Fprintf(&b, "- Session ID: %s\n", dash(st.SessionID))
@@ -196,10 +197,14 @@ func RenderMemory(st *session.SessionState) string {
 		b.WriteString("_(empty)_\n")
 		return b.String()
 	}
-	order := []string{"constraint", "decision", "gotcha", "resource", "fact"}
+	order := []string{"important", "gotcha", "constraint", "decision", "resource", "fact"}
 	titles := map[string]string{
-		"constraint": "Constraints", "decision": "Decisions", "gotcha": "Gotchas",
-		"resource": "Resources", "fact": "Facts",
+		"important":  "重要部分 Important",
+		"gotcha":     "注意事项 Gotchas",
+		"constraint": "约束 Constraints",
+		"decision":   "决定 Decisions",
+		"resource":   "资源 Resources",
+		"fact":       "其他 Facts",
 	}
 	byKind := map[string][]session.MemoryItem{}
 	var extra []string
@@ -228,6 +233,61 @@ func RenderMemory(st *session.SessionState) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// ExtractSection returns the text between start and end markers (exclusive),
+// trimmed. Returns "" if either marker is missing.
+func ExtractSection(text, start, end string) string {
+	i := strings.Index(text, start)
+	if i < 0 {
+		return ""
+	}
+	i += len(start)
+	j := strings.Index(text[i:], end)
+	if j < 0 {
+		return ""
+	}
+	return strings.TrimSpace(text[i : i+j])
+}
+
+// MemoHumanText returns the human-authored section of a memo doc's raw text,
+// stripped of the heading and placeholder. Returns "" when empty or untouched.
+func MemoHumanText(raw string) string {
+	body := ExtractSection(raw, templates.MemoHumanStart, templates.MemoHumanEnd)
+	var keep []string
+	for _, ln := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(ln)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		// Drop the placeholder line shipped in the template.
+		if strings.HasPrefix(t, "(在这里写给") {
+			continue
+		}
+		keep = append(keep, t)
+	}
+	return strings.TrimSpace(strings.Join(keep, "\n"))
+}
+
+// RenderMemo rebuilds the memo doc, preserving the human section verbatim and
+// replacing only Claude's section. humanBody is the raw text already between the
+// HUMAN markers (pass "" to keep the template placeholder).
+func RenderMemo(humanBody string, claudeNotes []string) string {
+	if strings.TrimSpace(humanBody) == "" {
+		humanBody = "## 人工备注 (Human notes — Claude reads this on resume)\n\n(在这里写给 Claude 的提示、约束、上下文。下次会话 Claude 会自动读到。)"
+	}
+	var cb strings.Builder
+	cb.WriteString("## Claude 备注 (Claude's notes to you)\n\n")
+	if len(claudeNotes) == 0 {
+		cb.WriteString("(none yet)")
+	} else {
+		for _, n := range claudeNotes {
+			fmt.Fprintf(&cb, "- %s\n", n)
+		}
+	}
+	return fmt.Sprintf("# 备忘录 Memo\n\n%s\n%s\n%s\n\n%s\n%s\n%s\n",
+		templates.MemoHumanStart, humanBody, templates.MemoHumanEnd,
+		templates.MemoClaudeStart, strings.TrimRight(cb.String(), "\n"), templates.MemoClaudeEnd)
 }
 
 // RenderValidationEntry returns a single block to append to 03 (validation).

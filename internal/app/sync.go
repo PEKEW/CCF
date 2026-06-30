@@ -60,11 +60,16 @@ func (a *App) autoDistill(st *session.SessionState, now time.Time) {
 		return
 	}
 
-	switch {
-	case dg.LastAssistantText != "":
-		st.Cockpit.Summary = oneLine(trunc(dg.LastAssistantText, 280))
-	case dg.LastUserPrompt != "":
-		st.Cockpit.Summary = "Working on: " + oneLine(trunc(dg.LastUserPrompt, 200))
+	// The claude -p engine writes the human-readable Summary/Recap. Only fill them
+	// deterministically as a FALLBACK when the engine has not produced prose yet
+	// (binary missing, throttled before first run, etc.) — never clobber prose.
+	if strings.TrimSpace(st.Cockpit.Summary) == "" {
+		switch {
+		case dg.LastAssistantText != "":
+			st.Cockpit.Summary = oneLine(trunc(dg.LastAssistantText, 280))
+		case dg.LastUserPrompt != "":
+			st.Cockpit.Summary = "Working on: " + oneLine(trunc(dg.LastUserPrompt, 200))
+		}
 	}
 	st.Cockpit.ProgressNote = fmt.Sprintf("%d prompts · %d files · %d validations",
 		len(dg.Prompts), len(dg.EditedFiles), dg.Validations)
@@ -72,7 +77,9 @@ func (a *App) autoDistill(st *session.SessionState, now time.Time) {
 		st.Cockpit.Health = "green"
 	}
 
-	st.RecapNarrative = buildRecap(dg)
+	if strings.TrimSpace(st.RecapNarrative) == "" {
+		st.RecapNarrative = buildRecap(dg)
+	}
 
 	files := dg.EditedFiles
 	if len(files) > 20 {

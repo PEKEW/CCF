@@ -86,8 +86,16 @@ func (a *App) RunSessionStart(in *hooks.Input, out io.Writer) error {
 			}
 		}
 		a.notef("session-start: resumed %s folder=%s", st.SessionID, st.FeishuFolderURL)
-		return hooks.Context("SessionStart",
-			"Feishu-managed session resumed: "+st.SessionID).Write(out)
+		ctxMsg := "Feishu-managed session resumed: " + st.SessionID
+		// Read back the human-authored memo section so Claude sees notes the user
+		// left in Feishu for this resume.
+		if raw, err := a.readDocText(st, string(templates.KeyMemo)); err == nil {
+			if note := syncpkg.MemoHumanText(raw); note != "" {
+				ctxMsg += "\n\n[Memo — human notes from Feishu]\n" + note
+				a.notef("session-start: injected %d bytes of human memo", len(note))
+			}
+		}
+		return hooks.Context("SessionStart", ctxMsg).Write(out)
 	}
 
 	cwd := in.CWD
@@ -268,8 +276,14 @@ func (a *App) RunStop(in *hooks.Input, out io.Writer) error {
 	buf := syncpkg.NewBuffer(a.Store.Dir(st.SessionID))
 	_ = buf.Append(syncpkg.Event{Kind: "stop", HookEvent: "Stop", Summary: "stop", SyncPriority: syncpkg.PriorityImmediate})
 
+	// Refresh human-readable prose (throttled — Stop fires every turn).
+	a.generateSummary(st, now, false)
+
 	syncpkg.MarkHandoff(st, now)
 	if err := a.updateDoc(st, string(templates.KeyHandoff), syncpkg.RenderHandoffV2(st)); err != nil {
+		return err
+	}
+	if err := a.updateMemo(st); err != nil {
 		return err
 	}
 	if err := a.flush(st, "stop hook"); err != nil {
@@ -290,10 +304,12 @@ func (a *App) RunPreCompact(in *hooks.Input, out io.Writer) error {
 	_ = buf.Append(syncpkg.Event{Kind: "compact_pending", HookEvent: "PreCompact",
 		Summary: "trigger=" + in.Trigger, SyncPriority: syncpkg.PriorityNormal})
 	syncpkg.MarkCompact(st, now)
-	// Compaction imminent: distill durable facts into Memory and push now.
-	if a.distillMemory(st, now) {
-		_ = a.updateDoc(st, string(templates.KeyMemory), syncpkg.RenderMemory(st))
-	}
+	// Compaction imminent: force a fresh prose summary, distill durable facts into
+	// Memory, and push the memory + memo now (context is about to be lost).
+	a.generateSummary(st, now, true)
+	a.distillMemory(st, now)
+	_ = a.updateDoc(st, string(templates.KeyMemory), syncpkg.RenderMemory(st))
+	_ = a.updateMemo(st)
 	return a.finishHook(st, "", out, hooks.Allow())
 }
 
